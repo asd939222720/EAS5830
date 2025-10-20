@@ -32,13 +32,9 @@ def connect_with_middleware(contract_json):
 	w3 = Web3(HTTPProvider(urlbnb))
 	assert w3.is_connected(), f"Failed to connect to provider at {urlbnb}"
 	
-    
-	w3 = 0
-
 	# The second section requires you to inject middleware into your w3 object and
 	# create a contract object. Read more on the docs pages at https://web3py.readthedocs.io/en/stable/middleware.html
 	# and https://web3py.readthedocs.io/en/stable/web3.contract.html
-	contract = 0
 
 	w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
 	checksummed = Web3.to_checksum_address(address)
