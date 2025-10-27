@@ -61,6 +61,7 @@ def is_ordered_block(w3, block_num):
 		return True
 	
 	base_fee = block.get("baseFeePerGas")
+	base_fee = to_int(base_fee) if base_fee is not None else None
 
 	def to_int(x):
 		if x is None:
@@ -84,20 +85,14 @@ def is_ordered_block(w3, block_num):
 		ttype =  tx_type(tx.get('type'))
 		gas_price = to_int(tx.get('gasPrice'))
 
-		if base_fee is None:
-			prioF = gas_price
-
-		else:
-			base = to_int(base_fee)
-
-			if ttype ==2:
-				mp = to_int(tx.get('maxPriorityFeePerGas'))
-				mf = to_int(tx.get('maxFeePerGas')) 
-				prioF = min(mp, max(mf-base,0))
-
+		if gas_price is None:
+			mf = to_int(tx.get("maxFeePerGas"))
+			mp = to_int(tx.get("maxPriorityFeePerGas"))
+			if mf is not None and mp is not None and base_fee is not None:
+				gas_price = min(mf, mp + base_fee)
 			else:
-				prioF = max(gas_price-base,0)
-	transOrder.append(prioF if prioF is not None else 0)
+				gas_price = 0
+	transOrder.append(gas_price)
 
 	if len(transOrder)>1:
 		ordered = all(transOrder[i]>=transOrder[i+1] for i in range(len(transOrder)-1))
@@ -126,7 +121,7 @@ def get_contract_values(contract, admin_address, owner_address):
 	owner = Web3.to_checksum_address(owner_address)
 	onchain_root =contract.functions.merkleRoot().call()  # Get and return the merkleRoot from the provided contract
 	has_role =contract.functions.hasRole(default_admin_role, admin).call()  # Check the contract to see if the address "admin_address" has the role "default_admin_role"
-	prime = contract.functions.prime(owner).call()  # Call the contract to get the prime owned by "owner_address"
+	prime = contract.functions.getPrimeByOwner(owner).call()  # Call the contract to get the prime owned by "owner_address"
 
 	return onchain_root, has_role, prime
 
