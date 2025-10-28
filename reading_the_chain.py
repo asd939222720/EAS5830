@@ -61,7 +61,6 @@ def is_ordered_block(w3, block_num):
 		return True
 	
 	
-
 	def to_int(x):
 		if x is None:
 			return None
@@ -71,9 +70,16 @@ def is_ordered_block(w3, block_num):
 			return int(x, 16)
 		return int(x)
 	
+	def tx_type(t):
+		if t is None:
+			return 0
+		if isinstance(t, str):
+			return int(t, 16)
+		return int(t)
 	
 	base_fee = block.get("baseFeePerGas")
 	base_fee = to_int(base_fee) if base_fee is not None else None
+
 	
 	transOrder = []
 
