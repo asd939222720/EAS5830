@@ -79,6 +79,8 @@ def is_ordered_block(w3, block_num):
 			return int(t, 16)
 		return int(t)
 	
+	
+	
 	transOrder = []
 
 	for tx in txs:
@@ -92,7 +94,7 @@ def is_ordered_block(w3, block_num):
 				gas_price = min(mf, mp + base_fee)
 			else:
 				gas_price = 0
-	transOrder.append(gas_price)
+		transOrder.append(gas_price)
 
 	if len(transOrder)>1:
 		ordered = all(transOrder[i]>=transOrder[i+1] for i in range(len(transOrder)-1))
