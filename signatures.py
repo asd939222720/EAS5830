@@ -20,7 +20,7 @@ def sign(m):
 
     # TODO sign the given message "m"
     message = _to_defunct_message(m)  # Encode the message
-    signed_message = eth_account.Account.sign_message(message, private_key  # Sign the message
+    signed_message = eth_account.Account.sign_message(message, private_key)  # Sign the message
 
 
     """You can save the account public/private keypair that prints in the next section
