@@ -21,8 +21,10 @@ def sign_message(challenge, filename="secret_key.txt"):
 
     # TODO recover your account information for your private key and sign the given challenge
     # Use the code from the signatures assignment to sign the given challenge
-    
-    acct = w3.eth.account.from_key(key)
+    sk = key[0]
+    if not sk.startswith("0x"):
+        sk = "0x" + sk
+    acct = w3.eth.account.from_key(sk)
     eth_addr = acct.address
     signed_message = w3.eth.account.sign_message(message, private_key=acct.key)
 
