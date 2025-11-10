@@ -26,10 +26,9 @@ contract Destination is AccessControl {
 		 require(_recipient != address(0), "Destination: invalid recipient");
         require(_amount > 0, "Destination: amount must be > 0");
 
-        address wrapped = underlying_tokens[_underlying_token];
+        address wrapped = wrapped_tokens[_underlying_token];
         require(wrapped != address(0), "Destination: token not registered");
 
-        // Destination (this contract) has MINTER_ROLE on BridgeToken
         BridgeToken(wrapped).mint(_recipient, _amount);
 
         emit Wrap(_underlying_token, wrapped, _recipient, _amount);
@@ -41,13 +40,12 @@ contract Destination is AccessControl {
 		require(_recipient != address(0), "Destination: invalid recipient");
         require(_amount > 0, "Destination: amount must be > 0");
 
-        address underlying = wrapped_tokens[_wrapped_token];
+        address underlying = underlying_tokens[_wrapped_token];
         require(
             underlying != address(0),
             "Destination: wrapped token not registered"
         );
 
-        // Ensure caller has enough wrapped tokens
         require(
             ERC20(_wrapped_token).balanceOf(msg.sender) >= _amount,
             "Destination: insufficient balance"
@@ -77,8 +75,8 @@ contract Destination is AccessControl {
         );
         address wrappedAddr = address(wrapped);
 
-        underlying_tokens[_underlying_token] = wrappedAddr;
-        wrapped_tokens[wrappedAddr] = _underlying_token;
+        wrapped_tokens[_underlying_token] = wrappedAddr;
+        underlying_tokens[wrappedAddr] = _underlying_token;
         tokens.push(_underlying_token);
 
         emit Creation(_underlying_token, wrappedAddr);
