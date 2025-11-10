@@ -188,7 +188,7 @@ def send_signed_msg(proof, random_leaf):
 
     contract = w3.eth.contract(address=address, abi=abi)
 
-    tx = contract.functions.submit(random_leaf, proof).build_transaction({
+    tx = contract.functions.submit(proof, random_leaf).build_transaction({
         'from': acct.address,
         'nonce': w3.eth.get_transaction_count(acct.address),
         'gasPrice': w3.eth.gas_price,
@@ -200,7 +200,6 @@ def send_signed_msg(proof, random_leaf):
 
     signed = w3.eth.account.sign_transaction(tx, private_key=acct.key)
     tx_hash = w3.eth.send_raw_transaction(signed.rawTransaction).hex()
-
     return tx_hash
 
 
