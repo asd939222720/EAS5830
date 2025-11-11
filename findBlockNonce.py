@@ -42,15 +42,11 @@ def mine_block(k, prev_hash, transactions):
         h = hashlib.sha256(block_data + nonce).digest()
         h_int = int.from_bytes(h, byteorder='big')
 
-        # Check if last k bits are zero
         if (h_int & mask) == 0:
             assert isinstance(nonce, bytes), 'nonce should be of type bytes'
             return nonce
 
         nonce_int += 1
-
-    assert isinstance(nonce, bytes), 'nonce should be of type bytes'
-    return nonce
 
 
 def get_random_lines(filename, quantity):
