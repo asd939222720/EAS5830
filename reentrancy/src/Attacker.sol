@@ -77,4 +77,5 @@ contract Attacker is AccessControl, IERC777Recipient {
 	}
 
 }
+}
 
