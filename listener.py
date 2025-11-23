@@ -57,7 +57,6 @@ def scan_blocks(chain, start_block, end_block, contract_address, eventfile='depo
         rows = []
 
         for evt in events:
-            # Optionally, derive a simple date from the block timestamp (extra column)
             try:
                 block = w3.eth.get_block(evt.blockNumber)
                 dt = datetime.utcfromtimestamp(block.timestamp).strftime("%m/%d/%Y")
@@ -71,7 +70,6 @@ def scan_blocks(chain, start_block, end_block, contract_address, eventfile='depo
                 "amount": int(evt.args["amount"]),
                 "transactionHash": evt.transactionHash.hex(),
                 "address": evt.address,
-                # Extra column; assignment says "at least" 6 columns, so this is fine
                 "date": dt,
             }
             rows.append(row)
@@ -82,7 +80,6 @@ def scan_blocks(chain, start_block, end_block, contract_address, eventfile='depo
         df = pd.DataFrame(rows)
 
         csv_path = Path(eventfile)
-        # If file exists, append without header; otherwise create with header
         if csv_path.exists():
             df.to_csv(csv_path, mode="a", index=False, header=False)
         else:
