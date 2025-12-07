@@ -69,7 +69,15 @@ def send_tx(w3, fn):
     })
 
     signed = w3.eth.account.sign_transaction(tx, private_key=WARDEN_PRIVATE_KEY)
-    tx_hash = w3.eth.send_raw_transaction(signed.rawTransaction)
+
+    # web3.py v5 uses 'rawTransaction'; v6 uses 'raw_transaction'
+    raw = getattr(signed, "rawTransaction", None)
+    if raw is None:
+        raw = getattr(signed, "raw_transaction", None)
+    if raw is None:
+        raise AttributeError("SignedTransaction has neither 'rawTransaction' nor 'raw_transaction'")
+
+    tx_hash = w3.eth.send_raw_transaction(raw)
     print(f"Sent tx: {tx_hash.hex()}")
     receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     print(f"Tx mined in block {receipt.blockNumber}")
