@@ -88,10 +88,6 @@ def scan_blocks(chain, contract_info="contract_info.json"):
     if chain not in ['source','destination']:
         print( f"Invalid chain: {chain}" )
         return 0
-    
-    if chain not in ['source','destination']:
-        print( f"Invalid chain: {chain}" )
-        return 0
 
     # --- connect to both chains ---
     w3_source = connect_to("source")
@@ -105,8 +101,11 @@ def scan_blocks(chain, contract_info="contract_info.json"):
     source_info = get_contract_info("source", contract_info)
     dest_info   = get_contract_info("destination", contract_info)
 
-    # autograder expects these keys in contract_info.json:
-    # { "source": { "address": "...", "abi": [...] }, "destination": { "address": "...", "abi": [...] } }
+    # contract_info.json must have:
+    # {
+    #   "source": { "address": "...", "abi": [...] },
+    #   "destination": { "address": "...", "abi": [...] }
+    # }
     source_contract = build_contract(w3_source, source_info)
     dest_contract   = build_contract(w3_dest, dest_info)
 
@@ -137,21 +136,13 @@ def scan_blocks(chain, contract_info="contract_info.json"):
 
     # --- get events from last 5 blocks ---
     try:
+        # In web3.py v6, correct usage is:
+        # logs = contract.events.EventName.get_logs(from_block=..., to_block=...)
         EventClass = getattr(scan_contract.events, event_name)
-    except AttributeError:
-        print(f"Contract does not have event {event_name}")
+        logs = EventClass.get_logs(from_block=from_block, to_block=to_block)
+    except Exception as e:
+        print(f"Error fetching logs: {e}")
         return 0
-
-    # Try Web3 v6-style .get_logs first, fallback to filter if needed
-    try:
-        logs = EventClass().get_logs(fromBlock=from_block, toBlock=to_block)
-    except Exception:
-        try:
-            event_filter = EventClass.createFilter(fromBlock=from_block, toBlock=to_block)
-            logs = event_filter.get_all_entries()
-        except Exception as e:
-            print(f"Error fetching logs: {e}")
-            return 0
 
     if not logs:
         print("No relevant events found.")
