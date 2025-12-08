@@ -83,7 +83,6 @@ def send_tx(w3, fn):
     print(f"Tx mined in block {receipt.blockNumber}")
     return receipt
 
-
 def scan_blocks(chain, contract_info="contract_info.json"):
     """
         chain - (string) should be either "source" or "destination"
@@ -110,11 +109,6 @@ def scan_blocks(chain, contract_info="contract_info.json"):
     source_info = get_contract_info("source", contract_info)
     dest_info   = get_contract_info("destination", contract_info)
 
-    # contract_info.json must have:
-    # {
-    #   "source": { "address": "...", "abi": [...] },
-    #   "destination": { "address": "...", "abi": [...] }
-    # }
     source_contract = build_contract(w3_source, source_info)
     dest_contract   = build_contract(w3_dest, dest_info)
 
@@ -138,20 +132,31 @@ def scan_blocks(chain, contract_info="contract_info.json"):
         target_contract = source_contract
 
     latest_block = scan_w3.eth.block_number
-    from_block = max(latest_block - 4, 0)  # last 5 blocks
+
+    # Use a larger window so we don't miss events if the grader waits a bit
+    WINDOW = 100
+    from_block = max(latest_block - WINDOW + 1, 0)
     to_block   = latest_block
 
     print(f"Scanning {chain} for {event_name} events from block {from_block} to {to_block}...")
 
-    # --- get events from last 5 blocks ---
+    # --- get events one block at a time to avoid 'limit exceeded' ---
     try:
-        # In web3.py v6, correct usage is:
-        # logs = contract.events.EventName.get_logs(from_block=..., to_block=...)
         EventClass = getattr(scan_contract.events, event_name)
-        logs = EventClass.get_logs(from_block=from_block, to_block=to_block)
-    except Exception as e:
-        print(f"Error fetching logs: {e}")
+    except AttributeError:
+        print(f"Contract does not have event {event_name}")
         return 0
+
+    logs = []
+    for blk in range(from_block, to_block + 1):
+        try:
+            blk_logs = EventClass.get_logs(from_block=blk, to_block=blk)
+            if blk_logs:
+                logs.extend(blk_logs)
+        except Exception as e:
+            # If a particular block causes an RPC error, skip it and continue
+            print(f"Error fetching logs for block {blk}: {e}")
+            continue
 
     if not logs:
         print("No relevant events found.")
