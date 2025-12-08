@@ -138,7 +138,7 @@ def scan_blocks(chain, contract_info="contract_info.json"):
     latest_block = scan_w3.eth.block_number
 
     if chain == "destination":
-        WINDOW = 10
+        WINDOW = 15
     else:
         WINDOW = 5
 
