@@ -35,26 +35,18 @@ def get_contract_info(chain, contract_info):
     return contracts[chain]
 
 def build_contract(w3, info):
-    """Instantiate a web3 contract from the info dict (address + abi)."""
     addr = Web3.to_checksum_address(info["address"])
     abi = info["abi"]
     return w3.eth.contract(address=addr, abi=abi)
 
 
 def send_tx(w3, fn):
-    """
-    Build, sign and send a transaction for a contract function using the
-    hard-coded WARDEN_PRIVATE_KEY.
 
-    Handles multiple txs in one run by using the 'pending' nonce and
-    retrying once if we hit 'nonce too low'.
-    """
     acct = w3.eth.account.from_key(WARDEN_PRIVATE_KEY)
     from_addr = acct.address
     chain_id = w3.eth.chain_id
     gas_price = w3.eth.gas_price
 
-    # Estimate gas if possible
     try:
         gas_estimate = fn.estimate_gas({"from": from_addr})
     except Exception as e:
@@ -63,7 +55,6 @@ def send_tx(w3, fn):
 
     attempt = 0
     while attempt < 2:
-        # Use 'pending' so that multiple tx in same process get different nonces
         nonce = w3.eth.get_transaction_count(from_addr, "pending")
 
         tx = fn.build_transaction({
@@ -76,14 +67,9 @@ def send_tx(w3, fn):
 
         signed = w3.eth.account.sign_transaction(tx, private_key=WARDEN_PRIVATE_KEY)
 
-        # web3.py v5 uses 'rawTransaction'; v6 uses 'raw_transaction'
         raw = getattr(signed, "rawTransaction", None)
         if raw is None:
             raw = getattr(signed, "raw_transaction", None)
-        if raw is None:
-            raise AttributeError(
-                "SignedTransaction has neither 'rawTransaction' nor 'raw_transaction'"
-            )
 
         try:
             tx_hash = w3.eth.send_raw_transaction(raw)
@@ -94,17 +80,15 @@ def send_tx(w3, fn):
         except ValueError as e:
             msg = str(e)
             print(f"Error sending tx (attempt {attempt}): {msg}")
-            # If nonce is too low, recompute and retry once
+
             if "nonce too low" in msg and attempt == 0:
                 print("Nonce too low, retrying with updated nonce...")
                 attempt += 1
                 continue
-            # Otherwise, give up
             raise
 
     print("Failed to send transaction after retry.")
     return None
-
 
 
 def scan_blocks(chain, contract_info="contract_info.json"):
@@ -128,16 +112,14 @@ def scan_blocks(chain, contract_info="contract_info.json"):
         print("Failed to connect to one or both chains")
         return 0
 
-    # --- load contract info & build contract objects ---
+
     source_info = get_contract_info("source", contract_info)
     dest_info = get_contract_info("destination", contract_info)
 
     source_contract = build_contract(w3_source, source_info)
     dest_contract = build_contract(w3_dest, dest_info)
 
-    # Decide which chain we scan and which contract we call into
     if chain == "source":
-        # Scan source for Deposit events, then call wrap() on destination
         scan_w3 = w3_source
         scan_contract = source_contract
         event_name = "Deposit"
@@ -146,7 +128,6 @@ def scan_blocks(chain, contract_info="contract_info.json"):
         target_contract = dest_contract
 
     else:  # chain == "destination"
-        # Scan destination for unwrap() calls, then call withdraw() on source
         scan_w3 = w3_dest
         scan_contract = dest_contract
         event_name = "Unwrap"
@@ -156,43 +137,71 @@ def scan_blocks(chain, contract_info="contract_info.json"):
 
     latest_block = scan_w3.eth.block_number
 
-    # The assignment says “scan the last 5 blocks”; we’ll use a small window.
     if chain == "destination":
-        WINDOW = 10  # slightly larger to catch recent unwraps
+        WINDOW = 10
     else:
         WINDOW = 5
 
-    start_block = max(latest_block - WINDOW + 1, 0)
-    end_block = latest_block
+    from_block = max(latest_block - WINDOW + 1, 0)
+    to_block = latest_block
 
-    if start_block == end_block:
-        print(f"Scanning block {start_block} on {chain}")
-    else:
-        print(f"Scanning {chain} for {event_name} between blocks {start_block} and {end_block}...")
+    print(f"Scanning {chain} for {event_name} events from block {from_block} to {to_block}...")
 
-    # =====================================================================
-    # SOURCE SIDE: use Deposit EVENT (like listener.py, but with get_logs)
-    # =====================================================================
-    if chain == "source":
+    logs = []
+
+    if event_name == "Deposit":
         try:
-            EventClass = scan_contract.events.Deposit
+            EventClass = getattr(scan_contract.events, event_name)
         except AttributeError:
-            print("Contract does not have event Deposit")
+            print(f"Contract does not have event {event_name}")
             return 0
 
         try:
-            events = EventClass.get_logs(from_block=start_block, to_block=end_block)
+            logs = EventClass.get_logs(from_block=from_block, to_block=to_block)
         except Exception as e:
             print(f"Error fetching Deposit logs: {e}")
             return 0
 
-        if not events:
-            print("No Deposit events found.")
-            return 0
 
-        for evt in events:
-            args = evt["args"]
-            print(f"Found Deposit event: {args}")
+    else:  
+
+        topic0 = scan_w3.keccak(
+            text="Unwrap(address,address,address,address,uint256)"
+        ).hex()
+
+        EventClass = scan_contract.events.Unwrap
+
+        for blk in range(to_block, from_block - 1, -1):
+            try:
+                block = scan_w3.eth.get_block(blk)
+            except Exception as e:
+                print(f"Error getting block {blk}: {e}")
+                continue
+
+            try:
+                raw_logs = scan_w3.eth.get_logs({
+                    "blockHash": block["hash"],
+                    "address": scan_contract.address,
+                    "topics": [topic0],
+                })
+                if raw_logs:
+                    for raw in raw_logs:
+                        ev = EventClass().process_log(raw)
+                        logs.append(ev)
+                    break
+            except Exception as e:
+                print(f"Error fetching Unwrap logs for block {blk}: {e}")
+                continue
+
+    if not logs:
+        print("No relevant events found.")
+        return 0
+
+    for ev in logs:
+        args = ev["args"]
+        print(f"Found {event_name} event: {args}")
+
+        if event_name == "Deposit":
 
             token = args["token"]
             recipient = args["recipient"]
@@ -202,86 +211,14 @@ def scan_blocks(chain, contract_info="contract_info.json"):
             fn = target_contract.functions.wrap(token, recipient, amount)
             send_tx(target_w3, fn)
 
-        return 1
+        elif event_name == "Unwrap":
 
-    # =====================================================================
-    # DESTINATION SIDE: detect unwrap() calls by scanning transactions
-    # =====================================================================
-    # We completely avoid BSC logs here because the RPC keeps returning
-    # 'limit exceeded' for eth_getLogs. Instead we:
-    #   - scan the last few blocks
-    #   - look at all transactions sent to DestinationBridge
-    #   - decode function input; if fn_name == "unwrap", we react.
-    processed_any = False
+            underlying = args["underlying_token"]
+            to_addr = args["to"]
+            amount = args["amount"]
 
-    dest_addr = scan_contract.address
-
-    for blk in range(start_block, end_block + 1):
-        try:
-            # full_transactions=True so we get tx objects, not just hashes
-            block = scan_w3.eth.get_block(blk, full_transactions=True)
-        except Exception as e:
-            print(f"Error getting block {blk}: {e}")
-            continue
-
-        for tx in block["transactions"]:
-            # Some txs may have to == None (contract creation), skip those
-            to_addr = tx["to"]
-            if not to_addr:
-                continue
-
-            # Only care about transactions sent to our DestinationBridge contract
-            if Web3.to_checksum_address(to_addr) != dest_addr:
-                continue
-
-            # Try to decode the function call through the contract ABI
-            try:
-                fn_obj, fn_args = scan_contract.decode_function_input(tx["input"])
-            except Exception:
-                # Not a function we care about
-                continue
-
-            if fn_obj.fn_name != "unwrap":
-                continue
-
-            print(f"Found unwrap() tx in block {blk}: hash={tx['hash'].hex()}, args={fn_args}")
-            processed_any = True
-
-            # We don't rely on event args; we use the function arguments directly.
-            # The exact argument names depend on your solidity, but based on the
-            # event, typical fields include:
-            #   underlying_token / token
-            #   to
-            #   amount
-            # So we try a few reasonable keys.
-
-            underlying = (
-                fn_args.get("underlying_token")
-                or fn_args.get("token")
-                or fn_args.get("_token")
-            )
-            to_addr_unwrap = (
-                fn_args.get("to")
-                or fn_args.get("_to")
-                or fn_args.get("recipient")
-            )
-            amount = (
-                fn_args.get("amount")
-                or fn_args.get("_amount")
-            )
-
-            if not (underlying and to_addr_unwrap and amount is not None):
-                print("Could not extract underlying/to/amount from unwrap() args, skipping.")
-                continue
-
-            print(
-                f"Calling withdraw() on source: "
-                f"token={underlying}, recipient={to_addr_unwrap}, amount={amount}"
-            )
-            fn = target_contract.functions.withdraw(underlying, to_addr_unwrap, amount)
+            print(f"Calling withdraw() on source: token={underlying}, recipient={to_addr}, amount={amount}")
+            fn = target_contract.functions.withdraw(underlying, to_addr, amount)
             send_tx(target_w3, fn)
 
-    if not processed_any:
-        print("No unwrap() calls found in recent blocks.")
-
-    return 1 if processed_any else 0
+    return 1
