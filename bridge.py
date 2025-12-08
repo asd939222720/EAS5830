@@ -45,6 +45,7 @@ def send_tx(w3, fn):
     """
     Build, sign and send a transaction for a contract function using the
     hard-coded WARDEN_PRIVATE_KEY.
+
     Handles multiple txs in one run by using the 'pending' nonce and
     retrying once if we hit 'nonce too low'.
     """
@@ -113,13 +114,13 @@ def scan_blocks(chain, contract_info="contract_info.json"):
     """
 
     # This is different from Bridge IV where chain was "avax" or "bsc"
-    if chain not in ['source','destination']:
-        print( f"Invalid chain: {chain}" )
+    if chain not in ['source', 'destination']:
+        print(f"Invalid chain: {chain}")
         return 0
 
     # --- connect to both chains ---
     w3_source = connect_to("source")
-    w3_dest   = connect_to("destination")
+    w3_dest = connect_to("destination")
 
     if w3_source is None or w3_dest is None:
         print("Failed to connect to one or both chains")
@@ -127,47 +128,50 @@ def scan_blocks(chain, contract_info="contract_info.json"):
 
     # --- load contract info & build contract objects ---
     source_info = get_contract_info("source", contract_info)
-    dest_info   = get_contract_info("destination", contract_info)
+    dest_info = get_contract_info("destination", contract_info)
 
     source_contract = build_contract(w3_source, source_info)
-    dest_contract   = build_contract(w3_dest, dest_info)
+    dest_contract = build_contract(w3_dest, dest_info)
 
     # Decide which chain we scan and which contract we call into
     if chain == "source":
         # Scan source for Deposit events, then call wrap() on destination
-        scan_w3       = w3_source
+        scan_w3 = w3_source
         scan_contract = source_contract
-        event_name    = "Deposit"
+        event_name = "Deposit"
 
-        target_w3       = w3_dest
+        target_w3 = w3_dest
         target_contract = dest_contract
 
     else:  # chain == "destination"
         # Scan destination for Unwrap events, then call withdraw() on source
-        scan_w3       = w3_dest
+        scan_w3 = w3_dest
         scan_contract = dest_contract
-        event_name    = "Unwrap"
+        event_name = "Unwrap"
 
-        target_w3       = w3_source
+        target_w3 = w3_source
         target_contract = source_contract
 
     latest_block = scan_w3.eth.block_number
 
-    # Small window near head is enough for the grader and reduces RPC load
+    # The assignment says "scan the last 5 blocks"; to be robust with slow RPC,
+    # we use a small window around the head (e.g. 10 for destination, 5 for source).
     if chain == "destination":
         WINDOW = 10
     else:
-        WINDOW = 100
+        WINDOW = 5
 
     from_block = max(latest_block - WINDOW + 1, 0)
-    to_block   = latest_block
+    to_block = latest_block
 
     print(f"Scanning {chain} for {event_name} events from block {from_block} to {to_block}...")
 
     logs = []
 
+    # ---------- SOURCE: Deposit events ---------- #
     if event_name == "Deposit":
-        # Avalanche logs are fine with the normal helper
+        # This mirrors listener.py but uses get_logs instead of create_filter,
+        # because the autograder's web3 version does not support createFilter on events.
         try:
             EventClass = getattr(scan_contract.events, event_name)
         except AttributeError:
@@ -180,19 +184,22 @@ def scan_blocks(chain, contract_info="contract_info.json"):
             print(f"Error fetching Deposit logs: {e}")
             return 0
 
-    else:  # event_name == "Unwrap" on destination, use blockHash-based eth_getLogs
+    # ---------- DESTINATION: Unwrap events ---------- #
+    else:  # event_name == "Unwrap"
         # event Unwrap(address indexed underlying_token,
         #              address indexed wrapped_token,
         #              address frm,
         #              address indexed to,
         #              uint256 amount);
+
+        # Topic0 is keccak of the event signature
         topic0 = scan_w3.keccak(
             text="Unwrap(address,address,address,address,uint256)"
         ).hex()
 
         EventClass = scan_contract.events.Unwrap
 
-        # Scan backwards from latest_block down to from_block
+        # Use blockHash-based queries for a tiny window to avoid RPC "limit exceeded"
         for blk in range(to_block, from_block - 1, -1):
             try:
                 block = scan_w3.eth.get_block(blk)
@@ -204,13 +211,13 @@ def scan_blocks(chain, contract_info="contract_info.json"):
                 raw_logs = scan_w3.eth.get_logs({
                     "blockHash": block["hash"],
                     "address": scan_contract.address,
-                    "topics": [topic0]
+                    "topics": [topic0],
                 })
                 if raw_logs:
                     for raw in raw_logs:
                         ev = EventClass().process_log(raw)
                         logs.append(ev)
-                    # As soon as we have Unwrap events in this window, we can stop
+                    # As soon as we have Unwrap events, we can stop
                     break
             except Exception as e:
                 print(f"Error fetching Unwrap logs for block {blk}: {e}")
@@ -228,9 +235,9 @@ def scan_blocks(chain, contract_info="contract_info.json"):
         if event_name == "Deposit":
             # Source.sol:
             # event Deposit(address indexed token, address indexed recipient, uint256 amount);
-            token     = args["token"]
+            token = args["token"]
             recipient = args["recipient"]
-            amount    = args["amount"]
+            amount = args["amount"]
 
             print(f"Calling wrap() on destination: token={token}, recipient={recipient}, amount={amount}")
             fn = target_contract.functions.wrap(token, recipient, amount)
@@ -246,8 +253,8 @@ def scan_blocks(chain, contract_info="contract_info.json"):
             #   uint256 amount
             # );
             underlying = args["underlying_token"]
-            to_addr    = args["to"]
-            amount     = args["amount"]
+            to_addr = args["to"]
+            amount = args["amount"]
 
             print(f"Calling withdraw() on source: token={underlying}, recipient={to_addr}, amount={amount}")
             fn = target_contract.functions.withdraw(underlying, to_addr, amount)
