@@ -1,6 +1,6 @@
 from web3 import Web3
 from web3.providers.rpc import HTTPProvider
-from web3.middleware import ExtraDataToPOAMiddleware #Necessary for POA chains
+from web3.middleware import ExtraDataToPOAMiddleware
 from datetime import datetime
 import json
 import pandas as pd
@@ -127,7 +127,7 @@ def scan_blocks(chain, contract_info="contract_info.json"):
         target_w3 = w3_dest
         target_contract = dest_contract
 
-    else:  # chain == "destination"
+    else:
         scan_w3 = w3_dest
         scan_contract = dest_contract
         event_name = "Unwrap"
@@ -156,37 +156,20 @@ def scan_blocks(chain, contract_info="contract_info.json"):
         return 0
 
     try:
-        logs = EventClass.get_logs(
-            from_block=from_block,
-            to_block=to_block,
-            address=scan_contract.address,
-        )
+        logs = EventClass.get_logs(from_block=from_block, to_block=to_block)
     except Exception as e:
         print(f"Error fetching {event_name} logs for range {from_block}-{to_block}: {e}")
         print("Falling back to a block-by-block scan...")
         for block_num in range(from_block, to_block + 1):
             try:
-                block_logs = EventClass.get_logs(
-                    from_block=block_num,
-                    to_block=block_num,
-                    address=scan_contract.address,
-                )
+                block_logs = EventClass.get_logs(from_block=block_num, to_block=block_num)
                 if block_logs:
                     logs.extend(block_logs)
             except Exception as e_block:
                 print(f"Error fetching {event_name} logs for block {block_num}: {e_block}")
 
 
-    if logs:
-        def log_sort_key(entry):
-            return (
-                entry.get("blockNumber", 0),
-                entry.get("transactionIndex", 0),
-                entry.get("logIndex", 0),
-            )
-
-        logs.sort(key=log_sort_key, reverse=True)
-    else:
+    if not logs:
         print("No relevant events found.")
         return 0
 
