@@ -145,7 +145,7 @@ def scan_blocks(chain, contract_info="contract_info.json"):
     from_block = max(latest_block - WINDOW + 1, 0)
     to_block = latest_block
 
-    print(f"Scanning {chain} for {event_name} events from block {from_block} to {to_block}...")
+    print(f"Scanning {chain} for {event_name} events from block {from_block} to {to_block}. ")
 
     logs = []
 
@@ -159,7 +159,7 @@ def scan_blocks(chain, contract_info="contract_info.json"):
         logs = EventClass.get_logs(from_block=from_block, to_block=to_block)
     except Exception as e:
         print(f"Error fetching {event_name} logs for range {from_block}-{to_block}: {e}")
-        print("Falling back to a block-by-block scan...")
+        print("Falling back to a block-by-block scan.")
         for block_num in range(from_block, to_block + 1):
             try:
                 block_logs = EventClass.get_logs(from_block=block_num, to_block=block_num)
