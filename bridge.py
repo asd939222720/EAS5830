@@ -156,22 +156,37 @@ def scan_blocks(chain, contract_info="contract_info.json"):
         return 0
 
     try:
-        # Attempt to get logs for the entire window
-        logs = EventClass.get_logs(from_block=from_block, to_block=to_block)
+        logs = EventClass.get_logs(
+            from_block=from_block,
+            to_block=to_block,
+            address=scan_contract.address,
+        )
     except Exception as e:
         print(f"Error fetching {event_name} logs for range {from_block}-{to_block}: {e}")
-        # Fallback to fetching block-by-block
         print("Falling back to a block-by-block scan...")
         for block_num in range(from_block, to_block + 1):
             try:
-                block_logs = EventClass.get_logs(from_block=block_num, to_block=block_num)
+                block_logs = EventClass.get_logs(
+                    from_block=block_num,
+                    to_block=block_num,
+                    address=scan_contract.address,
+                )
                 if block_logs:
                     logs.extend(block_logs)
             except Exception as e_block:
                 print(f"Error fetching {event_name} logs for block {block_num}: {e_block}")
 
 
-    if not logs:
+    if logs:
+        def log_sort_key(entry):
+            return (
+                entry.get("blockNumber", 0),
+                entry.get("transactionIndex", 0),
+                entry.get("logIndex", 0),
+            )
+
+        logs.sort(key=log_sort_key, reverse=True)
+    else:
         print("No relevant events found.")
         return 0
 
