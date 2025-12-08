@@ -45,11 +45,11 @@ def send_tx(w3, fn):
     """
     Build, sign and send a transaction for a contract function using the
     hard-coded WARDEN_PRIVATE_KEY.
+    Handles multiple txs in one run by using the 'pending' nonce and
+    retrying once if we hit 'nonce too low'.
     """
     acct = w3.eth.account.from_key(WARDEN_PRIVATE_KEY)
     from_addr = acct.address
-
-    nonce = w3.eth.get_transaction_count(from_addr)
     chain_id = w3.eth.chain_id
     gas_price = w3.eth.gas_price
 
@@ -60,28 +60,49 @@ def send_tx(w3, fn):
         print(f"Gas estimate failed, using fallback 500000: {e}")
         gas_estimate = 500000
 
-    tx = fn.build_transaction({
-        "from": from_addr,
-        "nonce": nonce,
-        "chainId": chain_id,
-        "gas": gas_estimate,
-        "gasPrice": gas_price,
-    })
+    attempt = 0
+    while attempt < 2:
+        # Use 'pending' so that multiple tx in same process get different nonces
+        nonce = w3.eth.get_transaction_count(from_addr, "pending")
 
-    signed = w3.eth.account.sign_transaction(tx, private_key=WARDEN_PRIVATE_KEY)
+        tx = fn.build_transaction({
+            "from": from_addr,
+            "nonce": nonce,
+            "chainId": chain_id,
+            "gas": gas_estimate,
+            "gasPrice": gas_price,
+        })
 
-    # web3.py v5 uses 'rawTransaction'; v6 uses 'raw_transaction'
-    raw = getattr(signed, "rawTransaction", None)
-    if raw is None:
-        raw = getattr(signed, "raw_transaction", None)
-    if raw is None:
-        raise AttributeError("SignedTransaction has neither 'rawTransaction' nor 'raw_transaction'")
+        signed = w3.eth.account.sign_transaction(tx, private_key=WARDEN_PRIVATE_KEY)
 
-    tx_hash = w3.eth.send_raw_transaction(raw)
-    print(f"Sent tx: {tx_hash.hex()}")
-    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    print(f"Tx mined in block {receipt.blockNumber}")
-    return receipt
+        # web3.py v5 uses 'rawTransaction'; v6 uses 'raw_transaction'
+        raw = getattr(signed, "rawTransaction", None)
+        if raw is None:
+            raw = getattr(signed, "raw_transaction", None)
+        if raw is None:
+            raise AttributeError("SignedTransaction has neither 'rawTransaction' nor 'raw_transaction'")
+
+        try:
+            tx_hash = w3.eth.send_raw_transaction(raw)
+            print(f"Sent tx: {tx_hash.hex()}")
+            receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+            print(f"Tx mined in block {receipt.blockNumber}")
+            return receipt
+        except ValueError as e:
+            msg = str(e)
+            print(f"Error sending tx (attempt {attempt}): {msg}")
+            # If nonce is too low, recompute and retry once
+            if "nonce too low" in msg and attempt == 0:
+                print("Nonce too low, retrying with updated nonce...")
+                attempt += 1
+                continue
+            # Otherwise, give up
+            raise
+
+    # If we got here, something went wrong twice
+    print("Failed to send transaction after retry.")
+    return None
+
 
 def scan_blocks(chain, contract_info="contract_info.json"):
     """
