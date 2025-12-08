@@ -83,6 +83,7 @@ def send_tx(w3, fn):
     print(f"Tx mined in block {receipt.blockNumber}")
     return receipt
 
+
 def scan_blocks(chain, contract_info="contract_info.json"):
     """
         chain - (string) should be either "source" or "destination"
