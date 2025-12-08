@@ -140,7 +140,7 @@ def scan_blocks(chain, contract_info="contract_info.json"):
     if chain == "destination":
         WINDOW = 15
     else:
-        WINDOW = 5
+        WINDOW = 10
 
     from_block = max(latest_block - WINDOW + 1, 0)
     to_block = latest_block
@@ -149,49 +149,27 @@ def scan_blocks(chain, contract_info="contract_info.json"):
 
     logs = []
 
-    if event_name == "Deposit":
-        try:
-            EventClass = getattr(scan_contract.events, event_name)
-        except AttributeError:
-            print(f"Contract does not have event {event_name}")
-            return 0
+    try:
+        EventClass = getattr(scan_contract.events, event_name)
+    except AttributeError:
+        print(f"Contract does not have event {event_name}")
+        return 0
 
-        try:
-            logs = EventClass.get_logs(from_block=from_block, to_block=to_block)
-        except Exception as e:
-            print(f"Error fetching Deposit logs: {e}")
-            return 0
-
-
-    else:  
-
-        topic0 = scan_w3.keccak(
-            text="Unwrap(address,address,address,address,uint256)"
-        ).hex()
-
-        EventClass = scan_contract.events.Unwrap
-
-        for blk in range(to_block, from_block - 1, -1):
+    try:
+        # Attempt to get logs for the entire window
+        logs = EventClass.get_logs(from_block=from_block, to_block=to_block)
+    except Exception as e:
+        print(f"Error fetching {event_name} logs for range {from_block}-{to_block}: {e}")
+        # Fallback to fetching block-by-block
+        print("Falling back to a block-by-block scan...")
+        for block_num in range(from_block, to_block + 1):
             try:
-                block = scan_w3.eth.get_block(blk)
-            except Exception as e:
-                print(f"Error getting block {blk}: {e}")
-                continue
+                block_logs = EventClass.get_logs(from_block=block_num, to_block=block_num)
+                if block_logs:
+                    logs.extend(block_logs)
+            except Exception as e_block:
+                print(f"Error fetching {event_name} logs for block {block_num}: {e_block}")
 
-            try:
-                raw_logs = scan_w3.eth.get_logs({
-                    "blockHash": block["hash"],
-                    "address": scan_contract.address,
-                    "topics": [topic0],
-                })
-                if raw_logs:
-                    for raw in raw_logs:
-                        ev = EventClass().process_log(raw)
-                        logs.append(ev)
-                    break
-            except Exception as e:
-                print(f"Error fetching Unwrap logs for block {blk}: {e}")
-                continue
 
     if not logs:
         print("No relevant events found.")
